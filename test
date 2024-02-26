@@ -1,0 +1,152 @@
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.patches as patches
+import rps.robotarium as robotarium
+from rps.utilities.graph import *
+from rps.utilities.transformations import *
+from rps.utilities.barrier_certificates import *
+from rps.utilities.misc import *
+from rps.utilities.controllers import *
+
+np.random.seed = 1024
+
+recharger1_point = patches.Circle((-1.5, -1), radius=0.03, color="#0000FF")  # Blue color for charging points
+recharger2_point = patches.Circle((1.5, -1), radius=0.03, color="#0000FF")
+recharger3_point = patches.Circle((-1.5, 1), radius=0.03, color="#0000FF")
+recharger4_point = patches.Circle((1.5, 1), radius=0.03, color="#0000FF")
+recharger5_point = patches.Circle((0, 0.5), radius=0.03, color="#0000FF")
+
+# Define points of interest
+entropy_points = []
+recharger_points = [recharger1_point, recharger2_point, recharger3_point, recharger4_point, recharger5_point]
+
+# Calculate approximated centroids for entropy points
+for entropy_index in range(5):
+    nearest_chargers = []
+    for recharger in recharger_points:
+        distance = np.linalg.norm(np.array([entropy_index % 3 - recharger.center[0], (entropy_index // 3) - recharger.center[1]]))
+        nearest_chargers.append((distance, recharger))
+    nearest_chargers.sort(key=lambda x: x[0])
+    centroid = np.mean([charger.center for _, charger in nearest_chargers[:3]], axis=0)
+    entropy_points.append(patches.Circle(centroid, radius=0.03, color="#FFFF00"))
+
+# Instantiate Robotarium object
+N = 5
+r = robotarium.Robotarium(number_of_robots=N, show_figure=True, sim_in_real_time=True)
+
+# How many iterations do we want (about N*0.033 seconds)
+iterations = 500
+
+# We're working in single-integrator dynamics, and we don't want the robots
+# to collide or drive off the testbed. Thus, we're going to use barrier certificates
+si_barrier_cert = create_single_integrator_barrier_certificate_with_boundary()
+
+# Create SI to UNI dynamics transformation
+si_to_uni_dyn, uni_to_si_states = create_si_to_uni_mapping()
+
+# Set up simulation parameters
+x_min = -1.5
+x_max = 1.5
+y_min = -1
+y_max = 1
+res = 0.05
+
+# Battery threshold
+battery_threshold = 0.4  # Below 40%
+
+# Initialize battery levels to 100%
+battery_levels = np.full(N, 1.0)
+
+# Draw entropy points and charging points
+for point in entropy_points + recharger_points:
+    plt.gca().add_patch(point)
+
+# Create a plot for battery levels
+plt.figure()
+plt.xlabel('Robot')
+plt.ylabel('Battery Level')
+plt.title('Battery Levels')
+bar_plot = plt.bar(range(N), battery_levels, color='blue')
+
+# Main control loop
+for k in range(iterations):
+    # Get the poses of the robots and convert to single-integrator poses
+    x = r.get_poses()
+    x_si = uni_to_si_states(x)
+    current_x = x_si[0, :, None]
+    current_y = x_si[1, :, None]
+
+    c_v = np.zeros((N, 2))
+    w_v = np.zeros(N)
+
+    # Check energy level and direct to charging station if below threshold
+    for robot in range(N):
+        if battery_levels[robot] < battery_threshold:
+            # Robot needs to recharge
+            # Find nearest charging station
+            distances_to_chargers = [np.linalg.norm(x_si[:2, robot] - charger_center) for charger_center in [(recharger1_point.center[0], recharger1_point.center[1]), (recharger2_point.center[0], recharger2_point.center[1]), (recharger3_point.center[0], recharger3_point.center[1]), (recharger4_point.center[0], recharger4_point.center[1]), (recharger5_point.center[0], recharger5_point.center[1])]]
+            nearest_charger_index = np.argmin(distances_to_chargers)
+            target_x, target_y = (recharger_points[nearest_charger_index].center[0], recharger_points[nearest_charger_index].center[1])
+            # Update potential field
+            c_v[robot] = np.array([target_x, target_y])
+            w_v[robot] = 1
+        else:
+            # Compute potential field
+            for ix in np.arange(x_min, x_max, res):
+                for iy in np.arange(y_min, y_max, res):
+                    importance_value = 1
+                    distances = np.zeros(N)
+                    for robots in range(N):
+                        distances[robots] = np.sqrt(np.square(ix - current_x[robots]) + np.square(iy - current_y[robots]))
+                    min_index = np.argmin(distances)
+                    c_v[min_index][0] += ix * importance_value
+                    c_v[min_index][1] += iy * importance_value
+                    w_v[min_index] += 1
+
+    # Initialize the single-integrator control inputs
+    si_velocities = np.zeros((2, N))
+
+    # Calculate velocities based on potential field
+    for robots in range(N):
+        c_x = 0
+        c_y = 0
+        if not w_v[robots] == 0:
+            c_x = c_v[robots][0] / w_v[robots]
+            c_y = c_v[robots][1] / w_v[robots]
+            si_velocities[:, robots] = 1 * [(c_x - current_x[robots][0]), (c_y - current_y[robots][0])]
+
+    # Use barrier certificate to avoid collisions
+    si_velocities = si_barrier_cert(si_velocities, x_si)
+
+    # Transform single integrator to unicycle
+    dxu = si_to_uni_dyn(si_velocities, x)
+
+    # Set the velocities of agents 1,...,N
+    r.set_velocities(np.arange(N), dxu)
+
+    # Update battery levels and integrate battery level management and robot movement towards task points and charging stations
+    for robot in range(N):
+        # Update battery level
+        battery_levels[robot] += np.random.uniform(-0.01, 0.01)
+        battery_levels[robot] = np.clip(battery_levels[robot], 0, 1)  # Make sure the battery level is between 0 and 1
+        
+        # Reduce battery level after each iteration
+        battery_levels[robot] -= 0.0005  
+
+        # Increase battery level when the robot is near a charging point
+        for charger in recharger_points:
+            if np.linalg.norm(np.array([current_x[robot] - charger.center[0], current_y[robot] - charger.center[1]])) < 0.1:
+                battery_levels[robot] += 0.05
+
+        # Update bar plot color based on battery level
+        bar_plot[robot].set_height(battery_levels[robot])
+        bar_plot[robot].set_color('red' if battery_levels[robot] < battery_threshold else 'green')
+
+    # Pause to show animation
+    plt.pause(0.1)
+
+    # Iterate the simulation
+    r.step()
+
+# Call at end of script to print debug information and for your script to run on the Robotarium server properly
+r.call_at_scripts_end()
