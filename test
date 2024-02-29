@@ -10,11 +10,16 @@ from rps.utilities.controllers import *
 
 np.random.seed = 1024
 
-recharger1_point = patches.Circle((-1.5, -1), radius=0.03, color="#0000FF")  # Blue color for charging points
-recharger2_point = patches.Circle((1.5, -1), radius=0.03, color="#0000FF")
-recharger3_point = patches.Circle((-1.5, 1), radius=0.03, color="#0000FF")
-recharger4_point = patches.Circle((1.5, 1), radius=0.03, color="#0000FF")
-recharger5_point = patches.Circle((0, 0.5), radius=0.03, color="#0000FF")
+# Define colors for robots, charging points, and battery levels
+robot_colors =  {0: "red", 1: "green", 2: "blue", 3:"black",4:"grey",5:"orange"}
+charger_colors = ['#00FF00', '#00B300', '#008000', '#00FF00', '#00FF80']
+battery_colors = ['green', 'lightgreen', 'yellow', 'orange', 'red']
+
+recharger1_point = patches.Circle((-1.5, -1), radius=0.03, color=charger_colors[0])  # Blue color for charging points
+recharger2_point = patches.Circle((1.5, -1), radius=0.03, color=charger_colors[1])
+recharger3_point = patches.Circle((-1.5, 1), radius=0.03, color=charger_colors[2])
+recharger4_point = patches.Circle((1.5, 1), radius=0.03, color=charger_colors[3])
+recharger5_point = patches.Circle((0, 0.5), radius=0.03, color=charger_colors[4])
 
 # Define points of interest
 entropy_points = []
@@ -30,9 +35,16 @@ for entropy_index in range(5):
     centroid = np.mean([charger.center for _, charger in nearest_chargers[:3]], axis=0)
     entropy_points.append(patches.Circle(centroid, radius=0.03, color="#FFFF00"))
 
-# Instantiate Robotarium object
+# Instantiate Robotarium object with initial poses
 N = 5
-r = robotarium.Robotarium(number_of_robots=N, show_figure=True, sim_in_real_time=True)
+
+# Set initial poses of robots to charging points
+initial_poses = np.vstack((np.array([recharger.center[0] for recharger in recharger_points]), 
+                           np.array([recharger.center[1] for recharger in recharger_points]), 
+                           np.zeros(N)))
+
+
+r = robotarium.Robotarium(number_of_robots=N, show_figure=True, sim_in_real_time=True, initial_conditions=initial_poses)
 
 # How many iterations do we want (about N*0.033 seconds)
 iterations = 500
@@ -66,7 +78,7 @@ plt.figure()
 plt.xlabel('Robot')
 plt.ylabel('Battery Level')
 plt.title('Battery Levels')
-bar_plot = plt.bar(range(N), battery_levels, color='blue')
+bar_plot = plt.bar(range(N), battery_levels, color=battery_colors)
 
 # Main control loop
 for k in range(iterations):
@@ -129,18 +141,21 @@ for k in range(iterations):
         # Update battery level
         battery_levels[robot] += np.random.uniform(-0.01, 0.01)
         battery_levels[robot] = np.clip(battery_levels[robot], 0, 1)  # Make sure the battery level is between 0 and 1
-        
-        # Reduce battery level after each iteration
-        battery_levels[robot] -= 0.0005  
 
         # Increase battery level when the robot is near a charging point
+        charging = False
         for charger in recharger_points:
             if np.linalg.norm(np.array([current_x[robot] - charger.center[0], current_y[robot] - charger.center[1]])) < 0.1:
-                battery_levels[robot] += 0.05
+                charging = True
+                battery_levels[robot] = min(battery_levels[robot] + 0.01, 1)
+
+        # Only decrease battery level when the robot is not charging
+        if not charging:
+            battery_levels[robot] -= 0.005
 
         # Update bar plot color based on battery level
         bar_plot[robot].set_height(battery_levels[robot])
-        bar_plot[robot].set_color('red' if battery_levels[robot] < battery_threshold else 'green')
+        bar_plot[robot].set_color(battery_colors[robot] if battery_levels[robot] >= battery_threshold else 'red')
 
     # Pause to show animation
     plt.pause(0.1)
