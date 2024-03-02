@@ -8,7 +8,8 @@ import matplotlib.pyplot as plt
 import math
 import copy
 from utilityFunctions_AOC_IPP import *
-from GP import GP
+from GP import *
+import matplotlib.patches as patches
 
 
 ##################################################################################
@@ -18,9 +19,28 @@ from GP import GP
 # Implemented by Aiman Munir - Ph.D. Candidate, UGA School of Computing
 ##################################################################################
 
+charger_colors = ['#00FF00', '#00B300', '#008000', '#00FF00', '#00FF80']
+battery_colors = ['#00FF00', '#00B300', '#008000', '#00FF00', '#00FF80']
 
+recharger1_point = patches.Circle((-1, -1), radius=0.03, color=charger_colors[4])  # Blue color for charging points
+recharger2_point = patches.Circle((1, -1), radius=0.03, color=charger_colors[4])
+recharger3_point = patches.Circle((-1, 1), radius=0.03, color=charger_colors[4])
+recharger4_point = patches.Circle((1, 1), radius=0.03, color=charger_colors[4])
+recharger5_point = patches.Circle((0, 0.5), radius=0.03, color=charger_colors[4])
+
+recharger_points = [recharger1_point, recharger2_point, recharger3_point, recharger4_point, recharger5_point]
+
+# Battery threshold
+battery_threshold = 0.4  # Below 40%
+
+idle_consumption_rate = 0.001
+idle_consumption_rate = 0.005
+
+# Assign charging points to robots
+robot_charging_points = [recharger1_point, recharger2_point, recharger3_point, recharger4_point, recharger5_point]
 
 def executeIPP_py(N=4, resolution=0.1, number_of_iterations=20, show_fig_flag=True, save_fig_flag=False):
+    battery_levels = np.full(N,1.0)
     rng = np.random.default_rng(12345)
     distance_to_centroid_threshold= -0.1
     file_path = ""
@@ -51,6 +71,20 @@ def executeIPP_py(N=4, resolution=0.1, number_of_iterations=20, show_fig_flag=Tr
     rt_array = np.ones(number_of_iterations)
     locational_cost = np.ones(number_of_iterations)
     current_position_marker_handle = []
+
+    # Create a plot for battery levels
+    plt.figure()
+    plt.xlabel('Robot')
+    plt.ylabel('Battery Level')
+    plt.title('Battery Levels')
+
+    # Add a horizontal line for the battery threshold
+    plt.axhline(y=battery_threshold, color='r', linestyle='--', label='Battery Threshold')
+
+    bar_plot = plt.bar(range(N), battery_levels, color=battery_colors)
+
+    # Assign charging points to robots
+    robot_charging_points = [recharger1_point, recharger2_point, recharger3_point, recharger4_point, recharger5_point]
 
     # generate 9 Gauusian distribution for ground_truth
     # Using Z_phi here to represent ground_truth (phi(q))
@@ -93,6 +127,8 @@ def executeIPP_py(N=4, resolution=0.1, number_of_iterations=20, show_fig_flag=Tr
     for iteration in range(number_of_iterations):
         ## Get Robot Positions and Plotting
         positions_array[iteration,:,:] = current_robotspositions[:2,:]
+        for recharger_point in recharger_points:
+            main_axes.add_patch(recharger_point)
         [main_axes.scatter(current_robotspositions[0,:], current_robotspositions[1,:], c="green", s=60, marker="x", linewidths=1) for i in range(N)]
         if iteration>0:
             [plot.remove() for plot in positions_plots]
@@ -147,7 +183,6 @@ def executeIPP_py(N=4, resolution=0.1, number_of_iterations=20, show_fig_flag=Tr
         # phi^(t)(q) = mu^(t-1)(q) - sqrt(beta^(t)) * sigma^(t-1)(q), for all q in D
         #surrogate_mean = copy.deepcopy(pred_mean) - (math.sqrt(beta_val)*pred_std.reshape(pred_mean.shape))
         surrogate_mean = (pred_mean) + (math.sqrt(beta_val)*pred_std.reshape(pred_mean.shape)) 
-
         
         # Get the locations for each robot within their Voronoi regions, where the variance is maximum (VEC approach)
         for robot in range(N):
@@ -173,14 +208,13 @@ def executeIPP_py(N=4, resolution=0.1, number_of_iterations=20, show_fig_flag=Tr
                         idx_with_max_std = np.argmax(std_in_voronoi_region)
         #centroid = (np.array([C_x,C_y]))
         
-        
       	## Coverage Controller with Learning Objective (Calculating Velcotiy u_i(t) for each robot)
-	# Eq. 11 from [1]
+	    # Eq. 11 from [1]
         # Control law to find x_i dot : \dot{x}_i^(t) = (1 - gamma) * c_i^(t) + gamma * e_i^(t), for i in {1, ..., N}. Here r_t variable is the gamma(t)
-        # r_t = 0
+        r_t = 0
         step_size = 1
-
-        robotsPositions_diff = step_size  * (((1-r_t)*centroid)   + (r_t*sampling_goal) - current_robotspositions[:2,:] )
+        
+        robotsPositions_diff = step_size  * (((1-r_t)*centroid)  - current_robotspositions[:2,:] + (r_t*sampling_goal) )
         
         ## Calculating All Performance Metrics
         
@@ -188,7 +222,6 @@ def executeIPP_py(N=4, resolution=0.1, number_of_iterations=20, show_fig_flag=Tr
         #Calculate cumulative regret
         if iteration>0:
             regret_array[iteration] = cost - np.min(locational_cost[:iteration])
-            
             
         dist_to_centroid = np.ones((N))
         for robot in range(N):
@@ -217,6 +250,7 @@ def executeIPP_py(N=4, resolution=0.1, number_of_iterations=20, show_fig_flag=Tr
         
         #Set Velocities
         current_robotspositions[:2,:]  +=  robotsPositions_diff
+
         plt.pause(0.05)
 
     ## Saving All Plots
@@ -286,11 +320,7 @@ def executeIPP_py(N=4, resolution=0.1, number_of_iterations=20, show_fig_flag=Tr
         ax_cost.set_xlabel("Iterations")
         ax_cost.set_ylabel("Locational Cost")
         cum_dis_plot = ax_cost.plot(iteration_array,locational_cost, color = "black",label="locationalCost")
-        
-        
-        
 
-        
         #saveFigs
         if save_fig_flag:
             fig_dis_centroid.savefig(file_path+"distance_to_centroid.png")
