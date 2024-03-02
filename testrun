@@ -71,6 +71,8 @@ def executeIPP_py(N=4, resolution=0.1, number_of_iterations=20, show_fig_flag=Tr
     rt_array = np.ones(number_of_iterations)
     locational_cost = np.ones(number_of_iterations)
     current_position_marker_handle = []
+    charging_station = [recharger1_point.center[0], recharger1_point.center[1]] 
+
 
     # Create a plot for battery levels
     plt.figure()
@@ -211,13 +213,21 @@ def executeIPP_py(N=4, resolution=0.1, number_of_iterations=20, show_fig_flag=Tr
       	## Coverage Controller with Learning Objective (Calculating Velcotiy u_i(t) for each robot)
 	    # Eq. 11 from [1]
         # Control law to find x_i dot : \dot{x}_i^(t) = (1 - gamma) * c_i^(t) + gamma * e_i^(t), for i in {1, ..., N}. Here r_t variable is the gamma(t)
-        r_t = 0
+        # r_t = 0
         step_size = 1
-        
-        robotsPositions_diff = step_size  * (((1-r_t)*centroid)  - current_robotspositions[:2,:] + (r_t*sampling_goal) )
+        robotsPositions_diff = np.zeros((2, N))
+        for robot in range(N):
+            # Calculate distance to charging station
+            dist_to_cs = np.linalg.norm(current_robotspositions[:2, robot] - charging_station)
+            
+            if battery_levels[robot] < battery_threshold:
+                # Move towards charging station
+                robotsPositions_diff[:, robot] = step_size * ((1 - r_t) * centroid[:, robot] + r_t * charging_station - current_robotspositions[:2, robot])
+            else:
+                # Move towards sampling goal
+                robotsPositions_diff[:, robot] = step_size * ((1 - r_t) * centroid[:, robot] + r_t * sampling_goal[:, robot] - current_robotspositions[:2, robot])
         
         ## Calculating All Performance Metrics
-        
         locational_cost[iteration] = cost       
         #Calculate cumulative regret
         if iteration>0:
@@ -248,8 +258,8 @@ def executeIPP_py(N=4, resolution=0.1, number_of_iterations=20, show_fig_flag=Tr
         # based on max std in robot's current partition
         #current_robotspositions = copy.deepcopy(sampling_goal) 
         
-        #Set Velocities
-        current_robotspositions[:2,:]  +=  robotsPositions_diff
+        # Update robot positions using calculated velocity
+        current_robotspositions[:2, :] += robotsPositions_diff
 
         plt.pause(0.05)
 
