@@ -34,10 +34,22 @@ recharger_points = [recharger1_point, recharger2_point, recharger3_point, rechar
 battery_threshold = 0.4  # Below 40%
 
 idle_consumption_rate = 0.01
-idle_consumption_rate = 0.05
+idle_consumption_rate = 0.15
 
 # Assign charging points to robots
 robot_charging_points = [recharger1_point, recharger2_point, recharger3_point, recharger4_point, recharger5_point]
+
+def find_nearest_charging_station(robot_position, charging_points):
+    min_distance = float('inf')
+    nearest_station = None
+    for station in charging_points:
+        station_center = np.array(station.center)  # Extract center coordinates
+        distance = np.linalg.norm(robot_position - station_center)  # Calculate distance
+        if distance < min_distance:
+            min_distance = distance
+            nearest_station = station_center
+    return nearest_station
+
 
 def executeIPP_py(N=4, resolution=0.1, number_of_iterations=20, show_fig_flag=True, save_fig_flag=False):
     battery_levels = np.full(N,1.0)
@@ -72,6 +84,9 @@ def executeIPP_py(N=4, resolution=0.1, number_of_iterations=20, show_fig_flag=Tr
     locational_cost = np.ones(number_of_iterations)
     current_position_marker_handle = []
     charging_station = [recharger1_point.center[0], recharger1_point.center[1]] 
+    charging_threshold = 0.05
+    charging_rate = 0.1
+    transition_iterations = 8
 
 
     # Create a plot for battery levels
@@ -120,7 +135,7 @@ def executeIPP_py(N=4, resolution=0.1, number_of_iterations=20, show_fig_flag=Tr
     # for the 1st iteration setting the surrogate_mean
     surrogate_mean = copy.deepcopy(pred_mean)   
     beta_val = 0
-    r_t = 0
+    r_t = 0.0
     
     #########################################################  Main Code for Balancing Coverage and Informative Path Planning (IPP)
     goal_for_centroid = copy.deepcopy(current_robotspositions)
@@ -139,7 +154,7 @@ def executeIPP_py(N=4, resolution=0.1, number_of_iterations=20, show_fig_flag=Tr
             r_t = 1/iteration
             discretization = ((X.shape[0])*(X.shape[1])) * math.pi* math.pi* iteration *iteration 
         else: 
-            r_t = 1
+            r_t = 1.0
             discretization = ((X.shape[0])*(X.shape[1])) * math.pi* math.pi
         print(f"iteration:{iteration}")
         iteration_array[iteration] = iteration    
@@ -213,30 +228,36 @@ def executeIPP_py(N=4, resolution=0.1, number_of_iterations=20, show_fig_flag=Tr
 	    # Eq. 11 from [1]
         # Control law to find x_i dot : \dot{x}_i^(t) = (1 - gamma) * c_i^(t) + gamma * e_i^(t), for i in {1, ..., N}. Here r_t variable is the gamma(t)
         # r_t = 0
-        step_size = 1
+        # Calculating robots' positions difference
+        step_size = 1.0
         robotsPositions_diff = np.zeros((2, N))
         for robot in range(N):
+             # Find nearest charging station for the current robot
+            nearest_charging_station = find_nearest_charging_station(current_robotspositions[:2, robot], robot_charging_points)
+
             # Calculate distance to charging station
-            dist_to_cs = np.linalg.norm(current_robotspositions[:2, robot] - charging_station)
-            
+            dist_to_cs = np.linalg.norm(current_robotspositions[:2, robot] - nearest_charging_station)
+
             if battery_levels[robot] < battery_threshold:
-                # Move towards charging station
-                robotsPositions_diff[:, robot] = step_size * ((1 - r_t) * centroid[:, robot] + r_t * charging_station - current_robotspositions[:2, robot])
+                # Move towards charging station gradually
+                if dist_to_cs < charging_threshold:
+                    battery_levels[robot] = min(battery_levels[robot] + charging_rate, 0.80)
+                else:
+                    # Calculate the intermediate position between the current position and charging station
+                    charging_transition = current_robotspositions[:2, robot] + (nearest_charging_station - current_robotspositions[:2, robot]) * (1 / transition_iterations)
+                    robotsPositions_diff[:, robot] = step_size * (charging_transition - current_robotspositions[:2, robot])
             else:
-                # Move towards sampling goal
-                robotsPositions_diff[:, robot] = step_size * ((1 - r_t) * centroid[:, robot] + r_t * sampling_goal[:, robot] - current_robotspositions[:2, robot])
+                # Move towards sampling goal gradually
+                sampling_transition = current_robotspositions[:2, robot] + (sampling_goal[:, robot] - current_robotspositions[:2, robot]) * (1 / transition_iterations)
+                robotsPositions_diff[:, robot] = step_size * (sampling_transition - current_robotspositions[:2, robot])
 
             # Consume battery for movement
             distance_traveled = np.linalg.norm(robotsPositions_diff[:, robot])
             battery_levels[robot] -= idle_consumption_rate * distance_traveled
-            # bar_plot = plt.bar(range(N), battery_levels, color=battery_colors)
             bar_plot[robot].set_height(battery_levels[robot])
             bar_plot[robot].set_color(battery_colors[robot] if battery_levels[robot] >= battery_threshold else 'red')
             plt.draw()
             plt.pause(0.05)
-
-
-            
         ## Calculating All Performance Metrics
         locational_cost[iteration] = cost       
         #Calculate cumulative regret
