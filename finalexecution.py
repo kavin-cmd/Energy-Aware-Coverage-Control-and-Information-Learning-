@@ -86,7 +86,7 @@ def executeIPP_py(N=4, resolution=0.1, number_of_iterations=20, show_fig_flag=Tr
     charging_station = [recharger1_point.center[0], recharger1_point.center[1]] 
     charging_threshold = 0.05
     charging_rate = 0.1
-    transition_iterations = 8
+    transition_iterations = 10
 
 
     # Create a plot for battery levels
