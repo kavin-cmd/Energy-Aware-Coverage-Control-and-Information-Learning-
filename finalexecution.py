@@ -20,7 +20,7 @@ import matplotlib.patches as patches
 ##################################################################################
 
 charger_colors = ['#00FF00', '#00B300', '#008000', '#00FF00', '#00FF80']
-battery_colors = ['#00FF00', '#00B300', '#008000', '#00FF00', '#00FF80']
+battery_colors = ['#00FF00', '#00B300', '#008000', '#00FF00', '#00FF80', '#008080', '#00FF00', '#808000', '#008000', '#FF00FF']
 
 recharger1_point = patches.Circle((-1, -1), radius=0.03, color=charger_colors[4])  # Blue color for charging points
 recharger2_point = patches.Circle((1, -1), radius=0.03, color=charger_colors[4])
@@ -53,6 +53,7 @@ def find_nearest_charging_station(robot_position, charging_points):
 
 def executeIPP_py(N=4, resolution=0.1, number_of_iterations=20, show_fig_flag=True, save_fig_flag=False):
     battery_levels = np.full(N,1.0)
+    battery_levels[2:4] = 0.5
     rng = np.random.default_rng(12345)
     distance_to_centroid_threshold= -0.1
     file_path = ""
@@ -385,4 +386,4 @@ def executeIPP_py(N=4, resolution=0.1, number_of_iterations=20, show_fig_flag=Tr
 
 if __name__=="__main__":
     #Max 10 robots
-    executeIPP_py(N=5, resolution=0.02,number_of_iterations=50, show_fig_flag=True,save_fig_flag=True)     
+    executeIPP_py(N=6, resolution=0.02,number_of_iterations=50, show_fig_flag=True,save_fig_flag=True)     
