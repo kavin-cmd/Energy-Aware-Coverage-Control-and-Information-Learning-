@@ -19,7 +19,7 @@ import matplotlib.patches as patches
 # Implemented by Aiman Munir - Ph.D. Candidate, UGA School of Computing
 ##################################################################################
 
-charger_colors = ['#00FF00', '#00B300', '#008000', '#00FF00', '#00FF80']
+charger_colors = ['#00FF00', '#00B300', '#008000', '#00FF00', '#00FF80', '#008080']
 battery_colors = ['#00FF00', '#00B300', '#008000', '#00FF00', '#00FF80', '#008080', '#00FF00', '#808000', '#008000', '#FF00FF']
 
 recharger1_point = patches.Circle((-1, -1), radius=0.03, color=charger_colors[4])  # Blue color for charging points
@@ -27,6 +27,7 @@ recharger2_point = patches.Circle((1, -1), radius=0.03, color=charger_colors[4])
 recharger3_point = patches.Circle((-1, 1), radius=0.03, color=charger_colors[4])
 recharger4_point = patches.Circle((1, 1), radius=0.03, color=charger_colors[4])
 recharger5_point = patches.Circle((0, 0.5), radius=0.03, color=charger_colors[4])
+recharger6_point = patches.Circle((0.5, 0), radius=0.03, color=charger_colors[4])
 
 recharger_points = [recharger1_point, recharger2_point, recharger3_point, recharger4_point, recharger5_point]
 
@@ -37,7 +38,7 @@ idle_consumption_rate = 0.01
 idle_consumption_rate = 0.15
 
 # Assign charging points to robots
-robot_charging_points = [recharger1_point, recharger2_point, recharger3_point, recharger4_point, recharger5_point]
+robot_charging_points = [recharger1_point, recharger2_point, recharger3_point, recharger4_point, recharger5_point, recharger6_point]
 
 def find_nearest_charging_station(robot_position, charging_points):
     min_distance = float('inf')
@@ -88,6 +89,7 @@ def executeIPP_py(N=4, resolution=0.1, number_of_iterations=20, show_fig_flag=Tr
     charging_threshold = 0.05
     charging_rate = 0.1
     transition_iterations = 10
+    battery_levels_array = np.zeros((number_of_iterations, N))
 
 
     # Create a plot for battery levels
@@ -167,6 +169,8 @@ def executeIPP_py(N=4, resolution=0.1, number_of_iterations=20, show_fig_flag=Tr
                 current_position_marker_handle[robot_r].remove()
                 hullObject = global_hull_figHandles[robot_r]
                 hullObject.remove()
+
+        battery_levels_array[iteration, :] = battery_levels
         
         ## Coverage Part of the Algorithm
         # Perform Voronoi Partitioning        
@@ -363,6 +367,15 @@ def executeIPP_py(N=4, resolution=0.1, number_of_iterations=20, show_fig_flag=Tr
         ax_cost.set_ylabel("Locational Cost")
         cum_dis_plot = ax_cost.plot(iteration_array,locational_cost, color = "black",label="locationalCost")
 
+        # Fig: Battery Levels
+        fig_battery = plt.figure()
+        ax_battery = fig_battery.add_subplot()
+        ax_battery.set_xlabel("Iterations")
+        ax_battery.set_ylabel("Battery Level")
+        for i in range(N):
+            ax_battery.plot(iteration_array, battery_levels_array[:, i], label=f'Robot {i+1}', color=ROBOT_COLOR[i])
+        ax_battery.legend()
+
         #saveFigs
         if save_fig_flag:
             fig_dis_centroid.savefig(file_path+"distance_to_centroid.png")
@@ -377,6 +390,7 @@ def executeIPP_py(N=4, resolution=0.1, number_of_iterations=20, show_fig_flag=Tr
             fig_beta_val.savefig(file_path+"beta_val.png")
             fig_rt_val.savefig(file_path+"gamma_coeff.png")
             fig_regret.savefig(file_path+"regret.png")
+            fig_battery.savefig('battery_levels_plot.png')
             
         plt.show()
         plt.pause(20)
@@ -386,4 +400,4 @@ def executeIPP_py(N=4, resolution=0.1, number_of_iterations=20, show_fig_flag=Tr
 
 if __name__=="__main__":
     #Max 10 robots
-    executeIPP_py(N=6, resolution=0.02,number_of_iterations=50, show_fig_flag=True,save_fig_flag=True)     
+    executeIPP_py(N=6, resolution=0.02,number_of_iterations=100, show_fig_flag=True,save_fig_flag=True)     
