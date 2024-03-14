@@ -54,7 +54,7 @@ def find_nearest_charging_station(robot_position, charging_points):
 
 def executeIPP_py(N=4, resolution=0.1, number_of_iterations=20, show_fig_flag=True, save_fig_flag=False):
     battery_levels = np.full(N,1.0)
-    battery_levels[2:4] = 0.5
+    # battery_levels[2:4] = 0.5
     rng = np.random.default_rng(12345)
     distance_to_centroid_threshold= -0.1
     file_path = ""
@@ -102,12 +102,12 @@ def executeIPP_py(N=4, resolution=0.1, number_of_iterations=20, show_fig_flag=Tr
     plt.axhline(y=battery_threshold, color='r', linestyle='--', label='Battery Threshold')
 
     # Assign charging points to robots
-    robot_charging_points = [recharger1_point, recharger2_point, recharger3_point, recharger4_point, recharger5_point]
+    robot_charging_points = [recharger1_point, recharger2_point, recharger3_point, recharger4_point, recharger5_point, recharger6_point]
 
     # generate 9 Gauusian distribution for ground_truth
     # Using Z_phi here to represent ground_truth (phi(q))
     # Number of Gaussian distributions
-    num_distributions = 1
+    num_distributions = 3 # number of gaussian distributions in each robot's position 3 for trimodel
     # Variances for all distributions
     variances = np.ones(num_distributions) * 0.05  # Adjusted variance for visibility
     # Generate random means for both density functions
@@ -143,7 +143,21 @@ def executeIPP_py(N=4, resolution=0.1, number_of_iterations=20, show_fig_flag=Tr
     #########################################################  Main Code for Balancing Coverage and Informative Path Planning (IPP)
     goal_for_centroid = copy.deepcopy(current_robotspositions)
     sampling_goal = copy.deepcopy(current_robotspositions)
+    min_energy_array = np.zeros(number_of_iterations)
+    max_energy_array = np.zeros(number_of_iterations)
+    mean_energy_array = np.zeros(number_of_iterations)
+
+
     for iteration in range(number_of_iterations):
+        # Calculate minimum, maximum, and mean energy across robots
+        min_energy = np.min(battery_levels)
+        max_energy = np.max(battery_levels)
+        mean_energy = np.mean(battery_levels)
+        
+        # Store the values in arrays
+        min_energy_array[iteration] = min_energy
+        max_energy_array[iteration] = max_energy
+        mean_energy_array[iteration] = mean_energy
         ## Get Robot Positions and Plotting
         positions_array[iteration,:,:] = current_robotspositions[:2,:]
         for recharger_point in recharger_points:
@@ -246,7 +260,7 @@ def executeIPP_py(N=4, resolution=0.1, number_of_iterations=20, show_fig_flag=Tr
             if battery_levels[robot] < battery_threshold:
                 # Move towards charging station gradually
                 if dist_to_cs < charging_threshold:
-                    battery_levels[robot] = min(battery_levels[robot] + charging_rate, 0.80)
+                    battery_levels[robot] = 1.0
                 else:
                     # Calculate the intermediate position between the current position and charging station
                     charging_transition = current_robotspositions[:2, robot] + (nearest_charging_station - current_robotspositions[:2, robot]) * (1 / transition_iterations)
@@ -376,6 +390,16 @@ def executeIPP_py(N=4, resolution=0.1, number_of_iterations=20, show_fig_flag=Tr
             ax_battery.plot(iteration_array, battery_levels_array[:, i], label=f'Robot {i+1}', color=ROBOT_COLOR[i])
         ax_battery.legend()
 
+        fig_battery_mmm = plt.figure()
+        plt.plot(iteration_array, min_energy_array, label='Min Energy', linestyle='-', color='blue')
+        plt.plot(iteration_array, max_energy_array, label='Max Energy', linestyle='--', color='green')
+        plt.plot(iteration_array, mean_energy_array, label='Mean Energy', linestyle=':', color='red')
+        plt.xlabel('Iterations')
+        plt.ylabel('Energy Level')
+        plt.title('Energy Levels Across Iterations')
+        plt.legend()
+        plt.grid(True)
+
         #saveFigs
         if save_fig_flag:
             fig_dis_centroid.savefig(file_path+"distance_to_centroid.png")
@@ -391,6 +415,7 @@ def executeIPP_py(N=4, resolution=0.1, number_of_iterations=20, show_fig_flag=Tr
             fig_rt_val.savefig(file_path+"gamma_coeff.png")
             fig_regret.savefig(file_path+"regret.png")
             fig_battery.savefig('battery_levels_plot.png')
+            fig_battery_mmm.savefig('battery_energy_plots.png')
             
         plt.show()
         plt.pause(20)
