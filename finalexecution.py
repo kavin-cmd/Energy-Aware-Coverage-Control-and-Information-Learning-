@@ -32,10 +32,10 @@ recharger6_point = patches.Circle((0.5, 0), radius=0.03, color=charger_colors[4]
 recharger_points = [recharger1_point, recharger2_point, recharger3_point, recharger4_point, recharger5_point]
 
 # Battery threshold
-battery_threshold = 0.4  # Below 40%
+battery_threshold = 4.0  # Below 40%
 
 idle_consumption_rate = 0.01
-idle_consumption_rate = 0.15
+moving_consumption_rate = 0.15
 
 # Assign charging points to robots
 robot_charging_points = [recharger1_point, recharger2_point, recharger3_point, recharger4_point, recharger5_point, recharger6_point]
@@ -53,8 +53,11 @@ def find_nearest_charging_station(robot_position, charging_points):
 
 
 def executeIPP_py(N=4, resolution=0.1, number_of_iterations=20, show_fig_flag=True, save_fig_flag=False):
-    battery_levels = np.full(N,1.0)
-    # battery_levels[2:4] = 0.5
+    battery_levels = np.full(N,10.0)
+    # battery_levels[2:4] = 5.0
+    alpha = 0.1  # Energy decay factor
+    beta = 0.5  # Distance decay factor
+
     rng = np.random.default_rng(12345)
     distance_to_centroid_threshold= -0.1
     file_path = ""
@@ -62,7 +65,11 @@ def executeIPP_py(N=4, resolution=0.1, number_of_iterations=20, show_fig_flag=Tr
     x_min, x_max = -1, 1
     y_min, y_max = -1, 1    
     # generate random initial values
-    current_robotspositions =  rng.uniform(x_min, x_max, size=(2, N))
+    # current_robotspositions =  rng.uniform(x_min, x_max, size=(2, N))
+    current_robotspositions = np.array([
+    [recharger1_point.center[0], recharger2_point.center[0], recharger3_point.center[0], recharger4_point.center[0], recharger5_point.center[0], recharger6_point.center[0]],
+    [recharger1_point.center[1], recharger2_point.center[1], recharger3_point.center[1], recharger4_point.center[1], recharger5_point.center[1], recharger6_point.center[1]]
+])
     # to show interactive plotting
     plt.ion()
     main_fig = plt.figure()
@@ -107,7 +114,7 @@ def executeIPP_py(N=4, resolution=0.1, number_of_iterations=20, show_fig_flag=Tr
     # generate 9 Gauusian distribution for ground_truth
     # Using Z_phi here to represent ground_truth (phi(q))
     # Number of Gaussian distributions
-    num_distributions = 3 # number of gaussian distributions in each robot's position 3 for trimodel
+    num_distributions = 1 # number of gaussian distributions in each robot's position 3 for trimodel
     # Variances for all distributions
     variances = np.ones(num_distributions) * 0.05  # Adjusted variance for visibility
     # Generate random means for both density functions
@@ -251,28 +258,32 @@ def executeIPP_py(N=4, resolution=0.1, number_of_iterations=20, show_fig_flag=Tr
         step_size = 1.0
         robotsPositions_diff = np.zeros((2, N))
         for robot in range(N):
-             # Find nearest charging station for the current robot
+            # Find nearest charging station for the current robot
             nearest_charging_station = find_nearest_charging_station(current_robotspositions[:2, robot], robot_charging_points)
 
             # Calculate distance to charging station
             dist_to_cs = np.linalg.norm(current_robotspositions[:2, robot] - nearest_charging_station)
 
+            # Calculate energy consumption for movement
+            distance_traveled = np.linalg.norm(robotsPositions_diff[:, robot])
+            energy_consumption = moving_consumption_rate * distance_traveled
+
+            # Apply energy decay for the robot's battery level
+            battery_levels[robot] -= energy_consumption + alpha * 1 + beta * distance_traveled
+            # Check if the robot is close enough to the charging station to recharge
+            if np.linalg.norm(current_robotspositions[:2, robot] - nearest_charging_station) < charging_threshold:
+                # Recharge the battery to 100%
+                battery_levels[robot] = 10.0
+            # Check if the battery level is below the threshold
             if battery_levels[robot] < battery_threshold:
                 # Move towards charging station gradually
-                if dist_to_cs < charging_threshold:
-                    battery_levels[robot] = 1.0
-                else:
-                    # Calculate the intermediate position between the current position and charging station
-                    charging_transition = current_robotspositions[:2, robot] + (nearest_charging_station - current_robotspositions[:2, robot]) * (1 / transition_iterations)
-                    robotsPositions_diff[:, robot] = step_size * (charging_transition - current_robotspositions[:2, robot])
+                charging_transition = current_robotspositions[:2, robot] + (nearest_charging_station - current_robotspositions[:2, robot]) * (1 / transition_iterations)
+                robotsPositions_diff[:, robot] = step_size * (charging_transition - current_robotspositions[:2, robot])
             else:
                 # Move towards sampling goal gradually
                 sampling_transition = current_robotspositions[:2, robot] + (sampling_goal[:, robot] - current_robotspositions[:2, robot]) * (1 / transition_iterations)
                 robotsPositions_diff[:, robot] = step_size * (sampling_transition - current_robotspositions[:2, robot])
 
-            # Consume battery for movement
-            distance_traveled = np.linalg.norm(robotsPositions_diff[:, robot])
-            battery_levels[robot] -= idle_consumption_rate * distance_traveled
             bar_plot[robot].set_height(battery_levels[robot])
             bar_plot[robot].set_color(battery_colors[robot] if battery_levels[robot] >= battery_threshold else 'red')
             plt.draw()
