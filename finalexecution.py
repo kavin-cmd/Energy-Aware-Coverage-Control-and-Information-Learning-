@@ -10,6 +10,7 @@ import copy
 from utilityFunctions_AOC_IPP import *
 from GP import *
 import matplotlib.patches as patches
+from shapely.geometry import Point, LineString, Polygon
 
 
 ##################################################################################
@@ -31,6 +32,8 @@ recharger6_point = patches.Circle((0.5, 0), radius=0.03, color=charger_colors[4]
 
 recharger_points = [recharger1_point, recharger2_point, recharger3_point, recharger4_point, recharger5_point]
 
+
+
 # Battery threshold
 battery_threshold = 4.0  # Below 40%
 
@@ -39,6 +42,8 @@ moving_consumption_rate = 0.15
 
 # Assign charging points to robots
 robot_charging_points = [recharger1_point, recharger2_point, recharger3_point, recharger4_point, recharger5_point, recharger6_point]
+
+max_detection_range = 0.05
 
 def find_nearest_charging_station(robot_position, charging_points):
     min_distance = float('inf')
@@ -50,6 +55,41 @@ def find_nearest_charging_station(robot_position, charging_points):
             min_distance = distance
             nearest_station = station_center
     return nearest_station
+
+# Define obstacle points similar to recharging stations
+obstacle1_point = patches.Rectangle((-0.8, -0.2), 0.3, 0.3, color='gray', alpha=0.5)
+obstacle2_point = patches.Rectangle((0.2, 0.2), 0.2, 0.2, color='gray', alpha=0.5)
+obstacle3_point = patches.Circle((0, -0.8), radius=0.03, color='gray', alpha=0.5)
+obstacle4_point = patches.Circle((0.8, 0), radius=0.05, color='gray', alpha=0.5)
+obstacle5_point = patches.Rectangle((-0.4, 0.6), 0.8, 0.2, color='gray', alpha=0.5)
+
+# Add obstacle points to the list of obstacles
+obstacle_points = [obstacle1_point, obstacle2_point, obstacle3_point, obstacle4_point, obstacle5_point]
+
+def check_surroundings(current_position, max_detection_range, obstacles):
+    detected_obstacles = []
+    current_position_point = Point(current_position)
+    
+    for obstacle in obstacles:
+        # Convert obstacle to Shapely geometry
+        if isinstance(obstacle, patches.Rectangle):
+            obstacle_geometry = LineString([(obstacle.get_x(), obstacle.get_y()), 
+                                            (obstacle.get_x() + obstacle.get_width(), obstacle.get_y()), 
+                                            (obstacle.get_x() + obstacle.get_width(), obstacle.get_y() + obstacle.get_height()), 
+                                            (obstacle.get_x(), obstacle.get_y() + obstacle.get_height()), 
+                                            (obstacle.get_x(), obstacle.get_y())])
+        elif isinstance(obstacle, patches.Circle):
+            center = obstacle.center
+            radius = obstacle.get_radius()
+            obstacle_geometry = Point(center).buffer(radius)
+        else:
+            raise ValueError("Unsupported obstacle type")
+        
+        # Check if the obstacle is within detection range
+        if current_position_point.distance(obstacle_geometry) <= max_detection_range:
+            detected_obstacles.append(obstacle)
+    
+    return detected_obstacles
 
 
 def executeIPP_py(N=4, resolution=0.1, number_of_iterations=20, show_fig_flag=True, save_fig_flag=False):
@@ -98,6 +138,9 @@ def executeIPP_py(N=4, resolution=0.1, number_of_iterations=20, show_fig_flag=Tr
     transition_iterations = 10
     battery_levels_array = np.zeros((number_of_iterations, N))
 
+    # the obstacles are within the visible range of the axes
+    main_axes.set_xlim([-1.0, 1.0])
+    main_axes.set_ylim([-1.0, 1.0])
 
     # Create a plot for battery levels
     plt.figure()
@@ -169,6 +212,10 @@ def executeIPP_py(N=4, resolution=0.1, number_of_iterations=20, show_fig_flag=Tr
         positions_array[iteration,:,:] = current_robotspositions[:2,:]
         for recharger_point in recharger_points:
             main_axes.add_patch(recharger_point)
+
+        # Add obstacle points to the main figure
+        for obstacle_point in obstacle_points:
+            main_axes.add_patch(obstacle_point)
         [main_axes.scatter(current_robotspositions[0,:], current_robotspositions[1,:], c="green", s=60, marker="x", linewidths=1) for i in range(N)]
         if iteration>0:
             [plot.remove() for plot in positions_plots]
@@ -288,6 +335,12 @@ def executeIPP_py(N=4, resolution=0.1, number_of_iterations=20, show_fig_flag=Tr
             bar_plot[robot].set_color(battery_colors[robot] if battery_levels[robot] >= battery_threshold else 'red')
             plt.draw()
             plt.pause(0.05)
+
+            detected_obstacles = check_surroundings(current_robotspositions[:, robot], max_detection_range, obstacle_points)
+
+            if detected_obstacles:
+                print(f"Robot {robot+1} detected obstacles:", detected_obstacles)
+
         ## Calculating All Performance Metrics
         locational_cost[iteration] = cost       
         #Calculate cumulative regret
@@ -326,71 +379,71 @@ def executeIPP_py(N=4, resolution=0.1, number_of_iterations=20, show_fig_flag=Tr
 
     ## Saving All Plots
     if(show_fig_flag):
-        # Fig: Area
-        fig_area = plt.figure()
-        ax_area = fig_area.add_subplot()
-        ax_area.set_ylabel("Area")
-        ax_area.set_xlabel("Iterations")
-        area_plot = [ax_area.plot(iteration_array,areaArray[:,i], color=ROBOT_COLOR[i], label=f'Robot {i+1}')[0] for i in range(N)]
-        ax_area.legend()
+        # # Fig: Area
+        # fig_area = plt.figure()
+        # ax_area = fig_area.add_subplot()
+        # ax_area.set_ylabel("Area")
+        # ax_area.set_xlabel("Iterations")
+        # area_plot = [ax_area.plot(iteration_array,areaArray[:,i], color=ROBOT_COLOR[i], label=f'Robot {i+1}')[0] for i in range(N)]
+        # ax_area.legend()
 
-        # Fig: RMSE
-        fig_rmse = plt.figure()
-        ax_rmse = fig_rmse.add_subplot()
-        ax_rmse.set_ylabel("RMSE")
-        ax_rmse.set_xlabel("Iterations")
-        rmse_plot = ax_rmse.plot(iteration_array,rmse_array, color="black")
+        # # Fig: RMSE
+        # fig_rmse = plt.figure()
+        # ax_rmse = fig_rmse.add_subplot()
+        # ax_rmse.set_ylabel("RMSE")
+        # ax_rmse.set_xlabel("Iterations")
+        # rmse_plot = ax_rmse.plot(iteration_array,rmse_array, color="black")
         
-        # Fig: Variance
-        fig_var = plt.figure()
-        ax_rmse = fig_var.add_subplot()
-        ax_rmse.set_ylabel("Variance")
-        ax_rmse.set_xlabel("Iterations")
-        rmse_plot = ax_rmse.plot(iteration_array,variance_array, color="black")
+        # # Fig: Variance
+        # fig_var = plt.figure()
+        # ax_rmse = fig_var.add_subplot()
+        # ax_rmse.set_ylabel("Variance")
+        # ax_rmse.set_xlabel("Iterations")
+        # rmse_plot = ax_rmse.plot(iteration_array,variance_array, color="black")
 
-        # Fig: Cumulative Regret
-        fig_regret = plt.figure()
-        ax_regret = fig_regret.add_subplot()
-        ax_regret.set_ylabel("Regret r(t)")
-        ax_regret.set_xlabel("Iterations")
-        regret_plot = ax_regret.plot(iteration_array,regret_array, color="black")
+        # # Fig: Cumulative Regret
+        # fig_regret = plt.figure()
+        # ax_regret = fig_regret.add_subplot()
+        # ax_regret.set_ylabel("Regret r(t)")
+        # ax_regret.set_xlabel("Iterations")
+        # regret_plot = ax_regret.plot(iteration_array,regret_array, color="black")
 
-        # Fig: Beta Value of the Information Function (Surrogate Distribution)
-        fig_beta_val = plt.figure()
-        ax_beta_val = fig_beta_val.add_subplot()
-        ax_beta_val.set_ylabel("Beta Value of GP-UCB")
-        ax_beta_val.set_xlabel("Iterations")
-        beta_val_plot = ax_beta_val.plot(iteration_array,beta_val_array)
+        # # Fig: Beta Value of the Information Function (Surrogate Distribution)
+        # fig_beta_val = plt.figure()
+        # ax_beta_val = fig_beta_val.add_subplot()
+        # ax_beta_val.set_ylabel("Beta Value of GP-UCB")
+        # ax_beta_val.set_xlabel("Iterations")
+        # beta_val_plot = ax_beta_val.plot(iteration_array,beta_val_array)
 
-        # Fig: Balancing Coefficient (gamma in Eq. 11 of [1] - VEC Approach)
-        fig_rt_val = plt.figure()
-        ax_rt_val = fig_rt_val.add_subplot()
-        ax_rt_val.set_ylabel("Gamma Coefficient")
-        ax_rt_val.set_xlabel("Iterations")
-        rt_val_plot = ax_rt_val.plot(iteration_array,rt_array)
+        # # Fig: Balancing Coefficient (gamma in Eq. 11 of [1] - VEC Approach)
+        # fig_rt_val = plt.figure()
+        # ax_rt_val = fig_rt_val.add_subplot()
+        # ax_rt_val.set_ylabel("Gamma Coefficient")
+        # ax_rt_val.set_xlabel("Iterations")
+        # rt_val_plot = ax_rt_val.plot(iteration_array,rt_array)
         
-        # Fig: Centroid
-        fig_dis_centroid = plt.figure()
-        ax_dis_centroid = fig_dis_centroid.add_subplot()
-        ax_dis_centroid.set_xlabel("Iterations")
-        ax_dis_centroid.set_ylabel("Centroid Distance")
-        centroid_plot = [ax_dis_centroid.plot(iteration_array,centroid_dist_array[:,i], color=ROBOT_COLOR[i], label=f'Robot {i+1}')[0] for i in range(N)]
-        ax_dis_centroid.legend()
+        # # Fig: Centroid
+        # fig_dis_centroid = plt.figure()
+        # ax_dis_centroid = fig_dis_centroid.add_subplot()
+        # ax_dis_centroid.set_xlabel("Iterations")
+        # ax_dis_centroid.set_ylabel("Centroid Distance")
+        # centroid_plot = [ax_dis_centroid.plot(iteration_array,centroid_dist_array[:,i], color=ROBOT_COLOR[i], label=f'Robot {i+1}')[0] for i in range(N)]
+        # ax_dis_centroid.legend()
         
-        # Fig: Cumulative Distance
-        fig_cumulative_distance = plt.figure()
-        ax_cumulative_dis = fig_cumulative_distance.add_subplot()
-        ax_cumulative_dis.set_xlabel("Iterations")
-        ax_cumulative_dis.set_ylabel("Cumulative Distance")
-        cum_dis_plot = [ax_cumulative_dis.plot(iteration_array,cumulative_dist_array[:,i], color=ROBOT_COLOR[i], label=f'Robot {i+1}')[0] for i in range(N)]
-        ax_cumulative_dis.legend()
+        # # Fig: Cumulative Distance
+        # fig_cumulative_distance = plt.figure()
+        # ax_cumulative_dis = fig_cumulative_distance.add_subplot()
+        # ax_cumulative_dis.set_xlabel("Iterations")
+        # ax_cumulative_dis.set_ylabel("Cumulative Distance")
+        # cum_dis_plot = [ax_cumulative_dis.plot(iteration_array,cumulative_dist_array[:,i], color=ROBOT_COLOR[i], label=f'Robot {i+1}')[0] for i in range(N)]
+        # ax_cumulative_dis.legend()
 
-        # Fig: Cumulative Distance
-        fig_cost = plt.figure()
-        ax_cost = fig_cost.add_subplot()
-        ax_cost.set_xlabel("Iterations")
-        ax_cost.set_ylabel("Locational Cost")
-        cum_dis_plot = ax_cost.plot(iteration_array,locational_cost, color = "black",label="locationalCost")
+        # # Fig: Cumulative Distance
+        # fig_cost = plt.figure()
+        # ax_cost = fig_cost.add_subplot()
+        # ax_cost.set_xlabel("Iterations")
+        # ax_cost.set_ylabel("Locational Cost")
+        # cum_dis_plot = ax_cost.plot(iteration_array,locational_cost, color = "black",label="locationalCost")
 
         # Fig: Battery Levels
         fig_battery = plt.figure()
@@ -413,18 +466,18 @@ def executeIPP_py(N=4, resolution=0.1, number_of_iterations=20, show_fig_flag=Tr
 
         #saveFigs
         if save_fig_flag:
-            fig_dis_centroid.savefig(file_path+"distance_to_centroid.png")
-            fig_area.savefig(file_path+"area.png")
-            fig_rmse.savefig(file_path+"rmse.png")
-            fig_var.savefig(file_path+"variance.png")
-            fig_cumulative_distance.savefig(file_path+"cumulative_distance.png")
+            # fig_dis_centroid.savefig(file_path+"distance_to_centroid.png")
+            # fig_area.savefig(file_path+"area.png")
+            # fig_rmse.savefig(file_path+"rmse.png")
+            # fig_var.savefig(file_path+"variance.png")
+            # fig_cumulative_distance.savefig(file_path+"cumulative_distance.png")
             main_fig.savefig(file_path+"coverage.png")
             pred_mean_fig.savefig(file_path+"GPmean.png")
             pred_var_fig.savefig(file_path+"GPvar.png")
-            fig_cost.savefig(file_path+"cost.png")
-            fig_beta_val.savefig(file_path+"beta_val.png")
-            fig_rt_val.savefig(file_path+"gamma_coeff.png")
-            fig_regret.savefig(file_path+"regret.png")
+            # fig_cost.savefig(file_path+"cost.png")
+            # fig_beta_val.savefig(file_path+"beta_val.png")
+            # fig_rt_val.savefig(file_path+"gamma_coeff.png")
+            # fig_regret.savefig(file_path+"regret.png")
             fig_battery.savefig('battery_levels_plot.png')
             fig_battery_mmm.savefig('battery_energy_plots.png')
             
