@@ -11,28 +11,28 @@ from utilityFunctions_AOC_IPP import *
 from GP import *
 import matplotlib.patches as patches
 from shapely.geometry import Point, LineString, Polygon
-
-
-##################################################################################
-# Paper ref:
-# [1] Maria Santos, Udari Madhushani, Alessia Benevento, and Naomi Ehrich Leonard. Multi-robot learning and coverage of unknown spatial fields. 
-# In 2021 International Symposium on Multi-Robot and Multi-Agent Systems (MRS), pages 137–145. IEEE, 2021.
-# Implemented by Aiman Munir - Ph.D. Candidate, UGA School of Computing
-##################################################################################
+import random
 
 charger_colors = ['#00FF00', '#00B300', '#008000', '#00FF00', '#00FF80', '#008080']
 battery_colors = ['#00FF00', '#00B300', '#008000', '#00FF00', '#00FF80', '#008080', '#00FF00', '#808000', '#008000', '#FF00FF']
 
-recharger1_point = patches.Circle((-1, -1), radius=0.03, color=charger_colors[4])  # Blue color for charging points
-recharger2_point = patches.Circle((1, -1), radius=0.03, color=charger_colors[4])
-recharger3_point = patches.Circle((-1, 1), radius=0.03, color=charger_colors[4])
-recharger4_point = patches.Circle((1, 1), radius=0.03, color=charger_colors[4])
-recharger5_point = patches.Circle((0, 0.5), radius=0.03, color=charger_colors[4])
-recharger6_point = patches.Circle((0.5, 0), radius=0.03, color=charger_colors[4])
+num_charging_stations = 6
+
+x_min, x_max = -1, 1
+y_min, y_max = -1, 1  
+
+# Generate random coordinates for each charging station
+charging_station_coords = np.random.uniform((x_min, y_min), (x_max, y_max), (num_charging_stations, 2))
+
+# Create patches for each charging station with random coordinates
+recharger1_point = patches.Circle(charging_station_coords[0], radius=0.03, color='blue')
+recharger2_point = patches.Circle(charging_station_coords[1], radius=0.03, color='blue')
+recharger3_point = patches.Circle(charging_station_coords[2], radius=0.03, color='blue')
+recharger4_point = patches.Circle(charging_station_coords[3], radius=0.03, color='blue')
+recharger5_point = patches.Circle(charging_station_coords[4], radius=0.03, color='blue')
+recharger6_point = patches.Circle(charging_station_coords[5], radius=0.03, color='blue')
 
 recharger_points = [recharger1_point, recharger2_point, recharger3_point, recharger4_point, recharger5_point]
-
-
 
 # Battery threshold
 battery_threshold = 4.0  # Below 40%
@@ -56,15 +56,25 @@ def find_nearest_charging_station(robot_position, charging_points):
             nearest_station = station_center
     return nearest_station
 
-# Define obstacle points similar to recharging stations
-obstacle1_point = patches.Rectangle((-0.8, -0.2), 0.3, 0.3, color='gray', alpha=0.5)
-obstacle2_point = patches.Rectangle((0.2, 0.2), 0.2, 0.2, color='gray', alpha=0.5)
-obstacle3_point = patches.Circle((0, -0.8), radius=0.03, color='gray', alpha=0.5)
-obstacle4_point = patches.Circle((0.8, 0), radius=0.05, color='gray', alpha=0.5)
-obstacle5_point = patches.Rectangle((-0.4, 0.6), 0.8, 0.2, color='gray', alpha=0.5)
+num_obstacles = 5
+obstacles = np.random.rand(2, num_obstacles) * np.array([[x_max - x_min], [y_max - y_min]]) + np.array([[x_min], [y_min]])
+
+# # Define obstacle points similar to recharging stations
+# obstacle1_point = patches.Rectangle((-0.8, -0.2), 0.3, 0.3, color='gray', alpha=0.5)
+# obstacle2_point = patches.Rectangle((0.2, 0.2), 0.2, 0.2, color='gray', alpha=0.5)
+# obstacle3_point = patches.Circle((0, -0.8), radius=0.03, color='gray', alpha=0.5)
+# obstacle4_point = patches.Circle((0.8, 0), radius=0.05, color='gray', alpha=0.5)
+# obstacle5_point = patches.Rectangle((-0.4, 0.6), 0.8, 0.2, color='gray', alpha=0.5)
+
+obstacle_points = []
+for i in range(num_obstacles):
+    obstacle_point = patches.Circle((obstacles[0, i], obstacles[1, i]), radius=0.08, color='gray', alpha=0.5)
+    obstacle_points.append(obstacle_point)
 
 # Add obstacle points to the list of obstacles
-obstacle_points = [obstacle1_point, obstacle2_point, obstacle3_point, obstacle4_point, obstacle5_point]
+obstacle_points = [patches.Circle((obstacles[0, i], obstacles[1, i]), radius=0.03, color='gray', alpha=0.5) for i in range(num_obstacles)]
+
+total_map_area = (x_max - x_min) * (y_max - y_min)
 
 def check_surroundings(current_position, max_detection_range, obstacles):
     detected_obstacles = []
@@ -87,23 +97,43 @@ def check_surroundings(current_position, max_detection_range, obstacles):
         
         # Check if the obstacle is within detection range
         if current_position_point.distance(obstacle_geometry) <= max_detection_range:
-            detected_obstacles.append(obstacle)
+            return True
     
-    return detected_obstacles
+    return False
 
+def check_collision(robot_position, obstacle_positions, obstacle_sizes):
+    for obstacle_position, obstacle_size in zip(obstacle_positions, obstacle_sizes):
+        obstacle_shape = 'circle' if np.random.rand() < 0.5 else 'square'  # Randomly choose obstacle shape
+        if obstacle_shape == 'circle':
+            obstacle_radius = obstacle_size / 2
+            if np.linalg.norm(robot_position - obstacle_position) < obstacle_radius:
+                return True
+        elif obstacle_shape == 'square':
+            obstacle_half_size = obstacle_size / 2
+            if (abs(robot_position[0] - obstacle_position[0]) < obstacle_half_size) and (abs(robot_position[1] - obstacle_position[1]) < obstacle_half_size):
+                return True
+    return False
+
+# Function to calculate distance between two robots
+def distance(p1, p2):
+    return np.sqrt((p1[0] - p2[0])**2 + (p1[1] - p2[1])**2)
 
 def executeIPP_py(N=4, resolution=0.1, number_of_iterations=20, show_fig_flag=True, save_fig_flag=False):
     battery_levels = np.full(N,10.0)
-    # battery_levels[2:4] = 5.0
     alpha = 0.1  # Energy decay factor
     beta = 0.5  # Distance decay factor
+
+    covered_area = 0
+    collision_count = 0
+
+    # Data collection arrays
+    coverage_efficiency_array = np.zeros(number_of_iterations)
+    collision_count_array = np.zeros(number_of_iterations)
 
     rng = np.random.default_rng(12345)
     distance_to_centroid_threshold= -0.1
     file_path = ""
-    ROBOT_COLOR = {0: "red", 1: "green", 2: "blue", 3:"black",4:"grey",5:"orange",6:"cyan",7:"yellow",8:"magenta",9:"lime",10:"indigo"}
-    x_min, x_max = -1, 1
-    y_min, y_max = -1, 1    
+    ROBOT_COLOR = {0: "red", 1: "green", 2: "blue", 3:"black",4:"grey",5:"orange",6:"cyan",7:"yellow",8:"magenta",9:"lime",10:"indigo"}  
     # generate random initial values
     # current_robotspositions =  rng.uniform(x_min, x_max, size=(2, N))
     current_robotspositions = np.array([
@@ -135,8 +165,15 @@ def executeIPP_py(N=4, resolution=0.1, number_of_iterations=20, show_fig_flag=Tr
     charging_station = [recharger1_point.center[0], recharger1_point.center[1]] 
     charging_threshold = 0.05
     charging_rate = 0.1
-    transition_iterations = 10
+    transition_iterations = 20
     battery_levels_array = np.zeros((number_of_iterations, N))
+    distances =[]
+
+
+    # Lists to store data for plotting
+    covered_area_history = []
+    collision_count_history = []
+    total_collision_history = []
 
     # the obstacles are within the visible range of the axes
     main_axes.set_xlim([-1.0, 1.0])
@@ -267,6 +304,8 @@ def executeIPP_py(N=4, resolution=0.1, number_of_iterations=20, show_fig_flag=Tr
         pred_var = pred_var.reshape(X.shape[0],X.shape[1])
         pred_std = np.sqrt(pred_var)
         plot_mean_and_var(X,Y,pred_mean,pred_std.reshape(pred_mean.shape),pred_mean_fig=pred_mean_fig,pred_var_fig=pred_var_fig)
+
+        
         
         # Eq 9 from paper [1]
         # phi^(t)(q) = mu^(t-1)(q) - sqrt(beta^(t)) * sigma^(t-1)(q), for all q in D
@@ -317,30 +356,63 @@ def executeIPP_py(N=4, resolution=0.1, number_of_iterations=20, show_fig_flag=Tr
 
             # Apply energy decay for the robot's battery level
             battery_levels[robot] -= energy_consumption + alpha * 1 + beta * distance_traveled
-            # Check if the robot is close enough to the charging station to recharge
-            if np.linalg.norm(current_robotspositions[:2, robot] - nearest_charging_station) < charging_threshold:
-                # Recharge the battery to 100%
+            
+            # Check if the distance to the charging station is less than the charging threshold
+            if dist_to_cs < charging_threshold:
+                # Charge the battery to 100%
                 battery_levels[robot] = 10.0
+
             # Check if the battery level is below the threshold
             if battery_levels[robot] < battery_threshold:
                 # Move towards charging station gradually
                 charging_transition = current_robotspositions[:2, robot] + (nearest_charging_station - current_robotspositions[:2, robot]) * (1 / transition_iterations)
-                robotsPositions_diff[:, robot] = step_size * (charging_transition - current_robotspositions[:2, robot])
+                robotsPositions_diff[:, robot] = (step_size) * (charging_transition - current_robotspositions[:2, robot])
             else:
                 # Move towards sampling goal gradually
                 sampling_transition = current_robotspositions[:2, robot] + (sampling_goal[:, robot] - current_robotspositions[:2, robot]) * (1 / transition_iterations)
-                robotsPositions_diff[:, robot] = step_size * (sampling_transition - current_robotspositions[:2, robot])
+                robotsPositions_diff[:, robot] = (step_size) * (sampling_transition - current_robotspositions[:2, robot])
 
             bar_plot[robot].set_height(battery_levels[robot])
             bar_plot[robot].set_color(battery_colors[robot] if battery_levels[robot] >= battery_threshold else 'red')
             plt.draw()
             plt.pause(0.05)
 
+            # Check for obstacles in the vicinity
             detected_obstacles = check_surroundings(current_robotspositions[:, robot], max_detection_range, obstacle_points)
 
             if detected_obstacles:
-                print(f"Robot {robot+1} detected obstacles:", detected_obstacles)
-
+                print(f"Robot {robot + 1} detected obstacles: {detected_obstacles}")
+                avoidance_angle = np.pi / 4  # Steer away by 45 degrees (pi/4 radians)
+                current_heading = np.arctan2(robotsPositions_diff[1, robot], robotsPositions_diff[0, robot])
+                target_heading = current_heading + avoidance_angle
+                print(f"Robot {robot + 1} current heading: {np.degrees(current_heading)} degrees")
+                print(f"Robot {robot + 1} target heading: {np.degrees(target_heading)} degrees")
+                
+                # Gradually adjust the heading towards the target angle over multiple time steps
+                steering_force = np.array([np.cos(target_heading), np.sin(target_heading)]) - np.array([np.cos(current_heading), np.sin(current_heading)])
+                steering_force /= np.linalg.norm(steering_force)  # Normalize the steering force
+                avoidance_command = steering_force * step_size / 10  # Reduce the magnitude of the force to control the smoothness
+                
+                print(f"Robot {robot + 1} avoidance command: {avoidance_command}")
+                # Update robot's position based on the avoidance command
+                new_position = current_robotspositions[:, robot] + avoidance_command
+                
+                # Check if the new position exceeds the boundaries
+                if not (x_min <= new_position[0] <= x_max and y_min <= new_position[1] <= y_max):
+                    # If the new position is out of bounds, adjust it to stay within the boundaries
+                    new_position[0] = np.clip(new_position[0], x_min, x_max)
+                    new_position[1] = np.clip(new_position[1], y_min, y_max)
+                    # Recalculate the avoidance command based on the adjusted position
+                    avoidance_command = new_position - current_robotspositions[:, robot]
+                
+                # Update the robot's position differential with the adjusted avoidance command
+                robotsPositions_diff[:, robot] = avoidance_command
+        
+                # Increase collision count
+                collision_count += 1
+            else:
+                print(f"Robot {robot + 1} did not detect obstacles.")
+        
         ## Calculating All Performance Metrics
         locational_cost[iteration] = cost       
         #Calculate cumulative regret
@@ -374,6 +446,22 @@ def executeIPP_py(N=4, resolution=0.1, number_of_iterations=20, show_fig_flag=Tr
         
         # Update robot positions using calculated velocity
         current_robotspositions[:2, :] += robotsPositions_diff
+
+        # Update covered area
+        for robot in range(N):
+            robot_position = current_robotspositions[:2, robot]
+            if Point(robot_position).within(Polygon([(x_min, y_min), (x_max, y_min), (x_max, y_max), (x_min, y_max)])):
+                covered_area += 1
+
+        # Calculate coverage efficiency percentage
+        coverage_efficiency = (covered_area / total_map_area) / 10
+        coverage_efficiency_array[iteration] = coverage_efficiency
+
+        # Store collision count
+        collision_count_array[iteration] = collision_count
+
+        print("Coverage Efficiency:", coverage_efficiency, "%")
+        print("Collision avoidance Count:", collision_count)
 
         plt.pause(0.05)
 
@@ -464,6 +552,22 @@ def executeIPP_py(N=4, resolution=0.1, number_of_iterations=20, show_fig_flag=Tr
         plt.legend()
         plt.grid(True)
 
+        # Plot coverage efficiency
+        coverage_eff = plt.figure()
+        plt.plot(range(number_of_iterations), coverage_efficiency_array, label='Coverage Efficiency')
+        plt.xlabel('Iteration')
+        plt.ylabel('Coverage Efficiency (%)')
+        plt.title('Coverage Efficiency Over Iterations')
+        plt.legend()
+
+        # Plot collision count
+        collision_cnt = plt.figure()
+        plt.plot(range(number_of_iterations), collision_count_array, label='Collision Count', color='red')
+        plt.xlabel('Iteration')
+        plt.ylabel('Collision Avoidance Count')
+        plt.title('Collision Avoidance Count Over Iterations')
+        plt.legend()
+
         #saveFigs
         if save_fig_flag:
             # fig_dis_centroid.savefig(file_path+"distance_to_centroid.png")
@@ -480,6 +584,8 @@ def executeIPP_py(N=4, resolution=0.1, number_of_iterations=20, show_fig_flag=Tr
             # fig_regret.savefig(file_path+"regret.png")
             fig_battery.savefig('battery_levels_plot.png')
             fig_battery_mmm.savefig('battery_energy_plots.png')
+            coverage_eff.savefig('coverage_efficiency_plot.png')
+            collision_cnt.savefig("collision_count_plot.png")
             
         plt.show()
         plt.pause(20)
